@@ -18,6 +18,7 @@
 #include "fm24_memtest.h"
 #include "hsc_ssc.h"
 #include "sht1x.h"
+#include "tca6408.h"
 #endif
 
 #endif
