@@ -13,7 +13,7 @@ typedef enum {
     TEST_AA
 } FM24_test_t;
 
-uint32_t FM24_memtest(const uint16_t usci_base_addr, const uint32_t start_addr, const uint32_t stop_addr, FM24_test_t test, uint32_t *rows_tested);
+uint32_t FM24_memtest(const uint16_t usci_base_addr, const uint8_t slave_addr, const uint32_t start_addr, const uint32_t stop_addr, FM24_test_t test, uint32_t *rows_tested);
 
 #ifdef __cplusplus
 }

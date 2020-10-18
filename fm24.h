@@ -44,7 +44,6 @@ extern "C" {
 // config.h should either contain a define for CONFIG_FM24V10 
 //  or CONFIG_FM24CL64B
 
-#define FM24_BA      0x50       // base address
 #define FM24_RSVD    0xF8       // reserved slave address
 #define FM24_SLEEP   0x86       // sleep command
 
@@ -86,13 +85,14 @@ extern "C" {
  * 
  * \param usci_base_address MSP430-related register address of the USCI subsystem. 
  *                              can be USCI_B0_BASE - USCI_B1_BASE, EUSCI_B0_BASE - EUSCI_B3_BASE
+ * \param slave_addrress    chip i2c address
  * \param data              pointer to pre-allocated buffer where the read data is to be written.
  *                              make sure it's at least data_len in lenght
  * \param addr              FM24 address where the read will start
  * \param data_len          how many bytes to be read
  **/
 
-uint32_t FM24_read(const uint16_t usci_base_addr, uint8_t * data, const uint32_t addr,
+uint32_t FM24_read(const uint16_t usci_base_addr, const uint8_t slave_addr, uint8_t * data, const uint32_t addr,
                    const uint32_t data_len);
 
 /**
@@ -102,15 +102,16 @@ uint32_t FM24_read(const uint16_t usci_base_addr, uint8_t * data, const uint32_t
  * 
  * \param usci_base_address MSP430-related register address of the USCI subsystem.
  *                              can be USCI_B0_BASE - USCI_B1_BASE, EUSCI_B0_BASE - EUSCI_B3_BASE
+ * \param slave_addrress    chip i2c address
  * \param data              pointer to buffer where the written data is provided
  * \param addr              FM24 address where the write will start
  * \param data_len          how many bytes to be written
  **/
 
-uint32_t FM24_write(const uint16_t usci_base_addr, uint8_t * data, const uint32_t addr,
+uint32_t FM24_write(const uint16_t usci_base_addr, const uint8_t slave_addr, uint8_t * data, const uint32_t addr,
                     const uint32_t data_len);
 
-uint8_t FM24_sleep(const uint16_t usci_base_addr);
+uint8_t FM24_sleep(const uint16_t usci_base_addr, const uint8_t slave_addr);
 
 // helpers
 

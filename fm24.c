@@ -22,9 +22,12 @@
 #endif
 
 static struct mem_mgmt_t m;
-static uint8_t fm24_status;
 
-uint32_t FM24_read(const uint16_t usci_base_addr, uint8_t * data, const uint32_t addr,
+#ifdef FM24_HAS_SLEEP_MODE
+static uint8_t fm24_status;
+#endif
+
+uint32_t FM24_read(const uint16_t usci_base_addr, const uint8_t slave_addr, uint8_t * data, const uint32_t addr,
                    const uint32_t data_len)
 {
     uint32_t c_addr;
@@ -47,7 +50,7 @@ uint32_t FM24_read(const uint16_t usci_base_addr, uint8_t * data, const uint32_t
     i2c_buff[0] = (c_addr & 0xff00) >> 8;
     i2c_buff[1] = c_addr & 0xff;
 
-    pkg.slave_addr = FM24_BA | (c_addr >> 16);
+    pkg.slave_addr = slave_addr | (c_addr >> 16);
     pkg.addr = NULL;
     pkg.addr_len = 0;
     pkg.data = i2c_buff;
@@ -81,7 +84,7 @@ uint32_t FM24_read(const uint16_t usci_base_addr, uint8_t * data, const uint32_t
     return EXIT_SUCCESS;
 }
 
-uint32_t FM24_write(const uint16_t usci_base_addr, uint8_t * data, const uint32_t addr,
+uint32_t FM24_write(const uint16_t usci_base_addr, const uint8_t slave_addr, uint8_t * data, const uint32_t addr,
                     const uint32_t data_len)
 {
     i2c_package_t pkg;
@@ -104,7 +107,7 @@ uint32_t FM24_write(const uint16_t usci_base_addr, uint8_t * data, const uint32_
     i2c_buff[0] = (c_addr & 0xff00) >> 8;
     i2c_buff[1] = c_addr & 0xff;
 
-    pkg.slave_addr = FM24_BA | (c_addr >> 16);
+    pkg.slave_addr = slave_addr | (c_addr >> 16);
     pkg.addr = i2c_buff;
     pkg.addr_len = 2;
     pkg.data = data;
@@ -131,10 +134,10 @@ uint32_t FM24_write(const uint16_t usci_base_addr, uint8_t * data, const uint32_
 }
 
 #ifdef FM24_HAS_SLEEP_MODE
-uint8_t FM24_sleep(const uint16_t usci_base_addr)
+uint8_t FM24_sleep(const uint16_t usci_base_addr, const uint8_t slave_addr)
 {
     uint8_t rv = 0;
-    uint8_t i2c_buff[1] = { FM24_BA << 1 };
+    uint8_t i2c_buff[1] = { slave_addr << 1 };
     uint8_t i2c_data[1] = { FM24_SLEEP };
 
     i2c_package_t pkg;
