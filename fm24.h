@@ -47,21 +47,19 @@ extern "C" {
 #define FM24_RSVD    0xF8       // reserved slave address
 #define FM24_SLEEP   0x86       // sleep command
 
-#define FM24_MAX_RETRY   4      // how many times to retry read/write opperations
-
 // FM24V10 has 131072 addressable bytes, so uint16_t is not enough
 
 #if defined(CONFIG_FM24V10)
-#define FM_LA        0x1FFFF    // last addressable byte
+#define FM_LA        0x1FFFFl    // last addressable byte
 #define MAX_SEG      12
 
 #elif defined(CONFIG_FM24CL64B)
-#define FM_LA        0x1FFF     // last addressable byte
+#define FM_LA        0x1FFFl     // last addressable byte
 #define MAX_SEG      9
 
 #else
 // fake values to help compilation in case the project does not use this chip
-#define FM_LA        0x1FFF     // last addressable byte
+#define FM_LA        0x1FFFl     // last addressable byte
 #define MAX_SEG      9
 
 #endif

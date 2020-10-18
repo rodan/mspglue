@@ -43,8 +43,6 @@ extern "C" {
 
 // config.h should contain a define for CONFIG_TCA6408
 
-#define TCA6408_MAX_RETRY  4      // how many times to retry read/write opperations
-
 #define     TCA6408_INPUT  0x0
 #define    TCA6408_OUTPUT  0x1
 #define   TCA6408_POL_INV  0x2
