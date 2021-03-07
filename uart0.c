@@ -2,88 +2,95 @@
 #include <msp430.h>
 #include <inttypes.h>
 #include <string.h>
+
+#include "config.h"
+#include "clock.h"
+#include "uart_config.h"
 #include "uart0.h"
 
-// get the UART0_SPEED_ #define
-#include "config.h"
+#include "proj.h"
+
+static uint8_t (*uart0_rx_irq_handler)(const uint8_t c);
+static uint8_t (*uart0_tx_irq_handler)(void);
 
 volatile char uart0_rx_buf[UART0_RXBUF_SZ];     // receive buffer
 volatile uint8_t uart0_p;       // number of characters received, 0 if none
 volatile uint8_t uart0_rx_enable;
 volatile uint8_t uart0_rx_err;
 
+
+#if defined(UART0_RX_USES_RINGBUF) 
+struct ringbuf rx;
+#endif
+
+#if defined(UART0_TX_USES_IRQ) 
+#include "ringbuf.h"
+struct ringbuf tx;
+uint8_t uart0_tx_buf[UART0_TXBUF_SZ];     // receive buffer
+volatile uint8_t uart0_tx_busy;
+#endif
+
 volatile uint8_t uart0_last_event;
+
+
 
 // you'll have to initialize/map uart ports in main()
 // or use uart0_port_init() if no mapping is needed
+
 void uart0_init(void)
 {
     UCA0CTLW0 = UCSWRST;        // put eUSCI state machine in reset
 
-    // consult 'Recommended Settings for Typical Crystals and Baud Rates' in slau367o
-    // for some reason any baud >= 115200 ends up with a non-working RX channel
+#if defined(UC_BRW)
+    UCA0CTLW0 |= UC_CTLW0;
 
-#ifdef UART0_SPEED_9600_1M
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 6;
-    UCA0MCTLW = 0x2081;
-#elif defined (UART0_SPEED_19200_1M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 3;
-    UCA0MCTLW = 0x0241;
-#elif defined (UART0_SPEED_38400_1M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 1;
-    UCA0MCTLW = 0x00a1;
-#elif defined (UART0_SPEED_57600_1M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 17;
-    UCA0MCTLW = 0x4a00;
-#elif defined (UART0_SPEED_115200_1M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 8;
-    UCA0MCTLW = 0xd600;
-#elif defined (UART0_SPEED_9600_8M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 52;
-    UCA0MCTLW = 0x4911;
-#elif defined (UART0_SPEED_19200_8M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 26;
-    UCA0MCTLW = 0xb601;
-#elif defined (UART0_SPEED_38400_8M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 13;
-    UCA0MCTLW = 0x8401;
-#elif defined (UART0_SPEED_57600_8M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 8;
-    UCA0MCTLW = 0xf7a1;
-#elif defined (UART0_SPEED_115200_8M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 4;
-    UCA0MCTLW = 0x5551;
-#elif defined (UART0_SPEED_230400_8M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 2;
-    UCA0MCTLW = 0xbb21;
-#elif defined (UART0_SPEED_460800_8M)
-    UCA0CTLW0 |= UCSSEL__SMCLK;
-    UCA0BRW = 17;
-    UCA0MCTLW = 0x4a00;
-#else // a safer default of 9600 - does not depend on SMCLK
+    #if defined(BAUD_9600)
+    UCA0BRW = BRW_9600_BAUD;
+    UCA0MCTLW = MCTLW_9600_BAUD;
+
+    #elif defined(BAUD_19200)
+    UCA0BRW = BRW_19200_BAUD;
+    UCA0MCTLW = MCTLW_19200_BAUD;
+
+    #elif defined(BAUD_38400)
+    UCA0BRW = BRW_38400_BAUD;
+    UCA0MCTLW = MCTLW_38400_BAUD;
+
+    #elif defined(BAUD_57600)
+    UCA0BRW = BRW_57600_BAUD;
+    UCA0MCTLW = MCTLW_57600_BAUD;
+
+    #elif defined(BAUD_115200)
+    UCA0BRW = BRW_115200_BAUD;
+    UCA0MCTLW = MCTLW_115200_BAUD;
+
+    #endif
+
+#else
+    // a 9600 BAUD based on ACLK
     UCA0CTLW0 |= UCSSEL__ACLK;
     UCA0BRW = 3;
-    //UCA0MCTLW |= 0x5300;
     UCA0MCTLW |= 0x9200;
 #endif
 
     UCA0CTLW0 &= ~UCSWRST;      // Initialize eUSCI
+
+#ifdef UART0_TX_USES_IRQ
+    ringbuf_init(&tx, uart0_tx_buf, UART0_TXBUF_SZ);
+    UCA0IE |= UCRXIE | UCTXIE;           // Enable USCI_A0 interrupts
+    //UCA0IE |= UCRXIE;           // Enable USCI_A0 RX interrupt
+    //UCA0IE |= UCTXIE;
+    //UCA0IFG &= ~UCTXIFG;
+    uart0_tx_busy = 0;
+#else
     UCA0IE |= UCRXIE;           // Enable USCI_A0 RX interrupt
+#endif
 
     uart0_p = 0;
     uart0_rx_enable = 1;
     uart0_rx_err = 0;
+
+    uart0_set_rx_irq_handler(uart0_rx_simple_handler);
 }
 
 void uart0_initb(const uint8_t baudrate)
@@ -94,21 +101,41 @@ void uart0_initb(const uint8_t baudrate)
     // for some reason any baud >= 115200 ends up with a non-working RX channel
 
     switch (baudrate) {
+#if defined(BAUD_9600)
         case BAUDRATE_9600:
-            UCA0CTLW0 |= UCSSEL__SMCLK;
-            UCA0BRW = 52;
-            UCA0MCTLW = 0x4911;
+            UCA0CTLW0 |= UC_CTLW0;
+            UCA0BRW = BRW_9600_BAUD;
+            UCA0MCTLW = MCTLW_9600_BAUD;
             break;
+#endif
+#if defined(BAUD_19200)
         case BAUDRATE_19200:
-            UCA0CTLW0 |= UCSSEL__SMCLK;
-            UCA0BRW = 26;
-            UCA0MCTLW = 0xb601;
+            UCA0CTLW0 |= UC_CTLW0;
+            UCA0BRW = BRW_19200_BAUD;
+            UCA0MCTLW = MCTLW_19200_BAUD;
             break;
+#endif
+#if defined(BAUD_38400)
+        case BAUDRATE_38400:
+            UCA0CTLW0 |= UC_CTLW0;
+            UCA0BRW = BRW_38400_BAUD;
+            UCA0MCTLW = MCTLW_38400_BAUD;
+            break;
+#endif
+#if defined(BAUD_19200)
         case BAUDRATE_57600:
-            UCA0CTLW0 |= UCSSEL__SMCLK;
-            UCA0BRW = 8;
-            UCA0MCTLW = 0xf7a1;
+            UCA0CTLW0 |= UC_CTLW0;
+            UCA0BRW = BRW_57600_BAUD;
+            UCA0MCTLW = MCTLW_57600_BAUD;
             break;
+#endif
+#if defined(BAUD_115200)
+        case BAUDRATE_115200:
+            UCA0CTLW0 |= UC_CTLW0;
+            UCA0BRW = BRW_115200_BAUD;
+            UCA0MCTLW = MCTLW_115200_BAUD;
+            break;
+#endif
     }
 
     UCA0CTLW0 &= ~UCSWRST;      // Initialize eUSCI
@@ -124,6 +151,51 @@ void uart0_port_init(void)
 {
     P2SEL0 &= ~(BIT0 | BIT1);
     P2SEL1 |= (BIT0 | BIT1);
+}
+
+void uart0_set_rx_irq_handler(uint8_t (*input)(const uint8_t c))
+{
+    uart0_rx_irq_handler = input;
+}
+
+uint8_t uart0_rx_simple_handler(const uint8_t rx)
+{
+    if (rx == 0x0a) {
+        return 0;
+    }
+
+    if (uart0_rx_enable && (!uart0_rx_err) && (uart0_p < UART0_RXBUF_SZ)) {
+        if (rx == 0x0d) {
+            uart0_rx_buf[uart0_p] = 0;
+            uart0_rx_enable = 0;
+            uart0_rx_err = 0;
+            return 1;
+            //ev = UART0_EV_RX;
+            //_BIC_SR_IRQ(LPM3_bits);
+        } else {
+            uart0_rx_buf[uart0_p] = rx;
+            uart0_p++;
+        }
+    } else {
+        uart0_rx_err++;
+        uart0_p = 0;
+        if (rx == 0x0d) {
+            uart0_rx_err = 0;
+            uart0_rx_enable = 1;
+        }
+    }
+    /*
+    if (rx == 'a') {
+        UCA0TXBUF = '_';
+    }
+    */
+    //uart0_tx_str((const char *)&rx, 1);
+    return 0;
+}
+
+void uart0_set_tx_irq_handler(uint8_t (*output)(void))
+{
+    uart0_tx_irq_handler = output;
 }
 
 uint8_t uart0_get_event(void)
@@ -151,6 +223,51 @@ char *uart0_get_rx_buf(void)
     }
 }
 
+
+#ifdef UART0_TX_USES_IRQ
+void uart0_tx_activate()
+{
+    uint8_t t;
+
+    if (!uart0_tx_busy) {
+        if (ringbuf_get(&tx, &t)) {
+            uart0_tx_busy = 1;
+            if ((t != '\r') && (t != '\n')) { 
+                UCA0TXBUF = '*';
+            } else {
+                UCA0TXBUF = t;
+            }
+        }
+    }
+}
+
+uint16_t uart0_tx_str(const char *str, const uint16_t size)
+{
+    uint16_t p = 0;
+
+    while (p < size) {        
+        if (ringbuf_put(&tx, str[p])) {
+            p++;
+        }
+    }
+    uart0_tx_activate();
+    return p;
+}
+
+uint16_t uart0_print(const char *str)
+{
+    size_t p = 0;
+    size_t size = strlen(str);
+    while (p < size) {
+        if (ringbuf_put(&tx, str[p])) {
+            p++;
+        }
+    }
+    uart0_tx_activate();
+    return p;
+}
+
+#else
 uint16_t uart0_tx_str(const char *str, const uint16_t size)
 {
     uint16_t p = 0;
@@ -175,6 +292,7 @@ uint16_t uart0_print(const char *str)
     }
     return p;
 }
+#endif
 
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
 #pragma vector=EUSCI_A0_VECTOR
@@ -186,44 +304,47 @@ void __attribute__ ((interrupt(EUSCI_A0_VECTOR))) USCI_A0_ISR(void)
 #endif
 {
     uint16_t iv = UCA0IV;
-    register char rx;
+    register char r;
+    uint8_t t;
     uint8_t ev = 0;
+#ifdef UART0_TX_USES_IRQ
+    //int16_t rb;
+#endif
 
     switch (iv) {
     case USCI_UART_UCRXIFG:
-        rx = UCA0RXBUF;
-
-        if (rx == 0x0a) {
-            return;
-        }
-
-        if (uart0_rx_enable && (!uart0_rx_err) && (uart0_p < UART0_RXBUF_SZ)) {
-            if (rx == 0x0d) {
-                uart0_rx_buf[uart0_p] = 0;
-                uart0_rx_enable = 0;
-                uart0_rx_err = 0;
-                //if (uart0_p) {
-                    ev = UART0_EV_RX;
-                    _BIC_SR_IRQ(LPM3_bits);
-                //}
-            } else {
-                uart0_rx_buf[uart0_p] = rx;
-                uart0_p++;
-            }
+        if (UCA0STATW & UCRXERR) {
+            // clear error flags by forcing a dummy read
+            r = UCA0RXBUF;
         } else {
-            uart0_rx_err++;
-            uart0_p = 0;
-            if (rx == 0x0d) {
-                uart0_rx_err = 0;
-                uart0_rx_enable = 1;
+            r = UCA0RXBUF;
+            if (uart0_rx_irq_handler != NULL) {
+                if (uart0_rx_irq_handler(r)) {
+                    ev |= UART0_EV_RX;
+                    LPM3_EXIT;
+                }
             }
         }
         break;
     case USCI_UART_UCTXIFG:
-        ev = UART0_EV_TX;
+        sig2_on;
+#ifdef UART0_TX_USES_IRQ
+        if (ringbuf_get(&tx, &t)) {
+            sig3_on;
+            uart0_tx_busy = 1;
+            UCA0TXBUF = t;
+        } else {
+            sig4_on;
+            uart0_tx_busy = 0;
+        }
+#endif
         break;
     default:
         break;
     }
     uart0_last_event |= ev;
+
+    sig2_off;
+    sig3_off;
+    sig4_off;
 }

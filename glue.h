@@ -1,6 +1,10 @@
 #ifndef __GLUE_H__
 #define __GLUE_H__
 
+#include "clock.h"
+
+#include "uart_config.h"
+
 #include "uart0.h"
 #include "helper.h"
 #include "event_handler.h"
