@@ -7,25 +7,25 @@
 #include "clock.h"
 #include "uart_config.h"
 #include "uart0.h"
+#include "ringbuf.h"
 
 #include "proj.h"
 
 static uint8_t (*uart0_rx_irq_handler)(const uint8_t c);
 static uint8_t (*uart0_tx_irq_handler)(void);
 
-volatile char uart0_rx_buf[UART0_RXBUF_SZ];     // receive buffer
+uint8_t uart0_rx_buf[UART0_RXBUF_SZ];     // receive buffer
 volatile uint8_t uart0_p;       // number of characters received, 0 if none
 volatile uint8_t uart0_rx_enable;
 volatile uint8_t uart0_rx_err;
 
 
 #if defined(UART0_RX_USES_RINGBUF) 
-struct ringbuf rx;
+struct ringbuf rbrx;
 #endif
 
 #if defined(UART0_TX_USES_IRQ) 
-#include "ringbuf.h"
-struct ringbuf tx;
+struct ringbuf rbtx;
 uint8_t uart0_tx_buf[UART0_TXBUF_SZ];     // receive buffer
 volatile uint8_t uart0_tx_busy;
 #endif
@@ -76,7 +76,7 @@ void uart0_init(void)
     UCA0CTLW0 &= ~UCSWRST;      // Initialize eUSCI
 
 #ifdef UART0_TX_USES_IRQ
-    ringbuf_init(&tx, uart0_tx_buf, UART0_TXBUF_SZ);
+    ringbuf_init(&rbtx, uart0_tx_buf, UART0_TXBUF_SZ);
     UCA0IE |= UCRXIE | UCTXIE;           // Enable USCI_A0 interrupts
     //UCA0IE |= UCRXIE;           // Enable USCI_A0 RX interrupt
     //UCA0IE |= UCTXIE;
@@ -90,7 +90,11 @@ void uart0_init(void)
     uart0_rx_enable = 1;
     uart0_rx_err = 0;
 
-    uart0_set_rx_irq_handler(uart0_rx_simple_handler);
+#ifdef UART0_RX_USES_RINGBUF
+    ringbuf_init(&rbrx, uart0_rx_buf, UART0_RXBUF_SZ);
+#endif
+
+    //uart0_set_rx_irq_handler(uart0_rx_simple_handler);
 }
 
 void uart0_initb(const uint8_t baudrate)
@@ -158,14 +162,33 @@ void uart0_set_rx_irq_handler(uint8_t (*input)(const uint8_t c))
     uart0_rx_irq_handler = input;
 }
 
-uint8_t uart0_rx_simple_handler(const uint8_t rx)
+#if defined (UART0_RX_USES_RINGBUF)
+
+// function returns 1 if the main loop should be woken up
+uint8_t uart0_rx_ringbuf_handler(const uint8_t c)
 {
-    if (rx == 0x0a) {
+    if (!ringbuf_put(&rbrx, c)) {
+        // the ringbuffer is full
+        uart0_rx_err++;
+    }
+
+    if (c == 0x0d) {
+        return 1;
+    }
+
+    return 0;
+}
+
+#else
+uint8_t uart0_rx_simple_handler(const uint8_t c)
+{
+
+    if (c == 0x0a) {
         return 0;
     }
 
     if (uart0_rx_enable && (!uart0_rx_err) && (uart0_p < UART0_RXBUF_SZ)) {
-        if (rx == 0x0d) {
+        if (c == 0x0d) {
             uart0_rx_buf[uart0_p] = 0;
             uart0_rx_enable = 0;
             uart0_rx_err = 0;
@@ -173,13 +196,13 @@ uint8_t uart0_rx_simple_handler(const uint8_t rx)
             //ev = UART0_EV_RX;
             //_BIC_SR_IRQ(LPM3_bits);
         } else {
-            uart0_rx_buf[uart0_p] = rx;
+            uart0_rx_buf[uart0_p] = c;
             uart0_p++;
         }
     } else {
         uart0_rx_err++;
         uart0_p = 0;
-        if (rx == 0x0d) {
+        if (c == 0x0d) {
             uart0_rx_err = 0;
             uart0_rx_enable = 1;
         }
@@ -192,6 +215,8 @@ uint8_t uart0_rx_simple_handler(const uint8_t rx)
     //uart0_tx_str((const char *)&rx, 1);
     return 0;
 }
+#endif
+
 
 void uart0_set_tx_irq_handler(uint8_t (*output)(void))
 {
@@ -223,6 +248,12 @@ char *uart0_get_rx_buf(void)
     }
 }
 
+#ifdef UART0_RX_USES_RINGBUF
+struct ringbuf *uart0_get_rx_ringbuf(void)
+{
+    return &rbrx;
+}
+#endif
 
 #ifdef UART0_TX_USES_IRQ
 void uart0_tx_activate()
@@ -230,13 +261,9 @@ void uart0_tx_activate()
     uint8_t t;
 
     if (!uart0_tx_busy) {
-        if (ringbuf_get(&tx, &t)) {
+        if (ringbuf_get(&rbtx, &t)) {
             uart0_tx_busy = 1;
-            if ((t != '\r') && (t != '\n')) { 
-                UCA0TXBUF = '*';
-            } else {
-                UCA0TXBUF = t;
-            }
+            UCA0TXBUF = t;
         }
     }
 }
@@ -246,11 +273,14 @@ uint16_t uart0_tx_str(const char *str, const uint16_t size)
     uint16_t p = 0;
 
     while (p < size) {        
-        if (ringbuf_put(&tx, str[p])) {
+        if (ringbuf_put(&rbtx, str[p])) {
             p++;
         }
+        if (p == 1) {
+            uart0_tx_activate();
+        }
     }
-    uart0_tx_activate();
+    //uart0_tx_activate();
     return p;
 }
 
@@ -259,11 +289,14 @@ uint16_t uart0_print(const char *str)
     size_t p = 0;
     size_t size = strlen(str);
     while (p < size) {
-        if (ringbuf_put(&tx, str[p])) {
+        if (ringbuf_put(&rbtx, str[p])) {
             p++;
         }
+        if (p == 1) {
+            uart0_tx_activate();
+        }
     }
-    uart0_tx_activate();
+    //uart0_tx_activate();
     return p;
 }
 
@@ -305,9 +338,9 @@ void __attribute__ ((interrupt(EUSCI_A0_VECTOR))) USCI_A0_ISR(void)
 {
     uint16_t iv = UCA0IV;
     register char r;
-    uint8_t t;
     uint8_t ev = 0;
 #ifdef UART0_TX_USES_IRQ
+    uint8_t t;
     //int16_t rb;
 #endif
 
@@ -327,14 +360,12 @@ void __attribute__ ((interrupt(EUSCI_A0_VECTOR))) USCI_A0_ISR(void)
         }
         break;
     case USCI_UART_UCTXIFG:
-        sig2_on;
 #ifdef UART0_TX_USES_IRQ
-        if (ringbuf_get(&tx, &t)) {
-            sig3_on;
+        if (ringbuf_get(&rbtx, &t)) {
             uart0_tx_busy = 1;
             UCA0TXBUF = t;
         } else {
-            sig4_on;
+            // nothing more to do
             uart0_tx_busy = 0;
         }
 #endif
@@ -344,7 +375,4 @@ void __attribute__ ((interrupt(EUSCI_A0_VECTOR))) USCI_A0_ISR(void)
     }
     uart0_last_event |= ev;
 
-    sig2_off;
-    sig3_off;
-    sig4_off;
 }

@@ -8,6 +8,7 @@
 #include "uart0.h"
 #include "helper.h"
 #include "event_handler.h"
+#include "ringbuf.h"
 
 #include "spi.h"
 #include "ad7789.h"

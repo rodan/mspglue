@@ -41,7 +41,7 @@
 #include "cc.h"
 #include "ringbuf.h"
 /*---------------------------------------------------------------------------*/
-void ringbuf_init(struct ringbuf *r, uint8_t * dataptr, uint8_t size)
+void ringbuf_init(struct ringbuf *r, uint8_t * dataptr, uint16_t size)
 {
     r->data = dataptr;
     r->mask = size - 1;

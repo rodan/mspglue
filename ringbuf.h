@@ -82,11 +82,11 @@ struct ringbuf {
  *             This function initiates a ring buffer. The data in the
  *             buffer is stored in an external array, to which a
  *             pointer must be supplied. The size of the ring buffer
- *             must be a power of two and cannot be larger than 128
+ *             must be a power of two and cannot be larger than 256
  *             bytes.
  *
  */
-void ringbuf_init(struct ringbuf *r, uint8_t * a, uint8_t size_power_of_two);
+void ringbuf_init(struct ringbuf *r, uint8_t * a, uint16_t size_power_of_two);
 
 /**
  * \brief      Insert a byte into the ring buffer

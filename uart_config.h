@@ -21,6 +21,10 @@ extern "C" {
 #define      BAUDRATE_115200  0x5
 #endif
 
+#define             UART0_RX_NO_ERR  0x0
+#define          UART0_RX_WAKE_MAIN  0x1 // ringbuffer got a special value, wake up main loop
+#define             UART0_RX_ERR_RB  0x2 // ringbuffer is full, cannot add new element
+
 // values based on slau367p.pdf table 30-5 Typical Crystals and Baud Rates
 
 // UCAxBRW.UCBRx - clock prescaler (16bit)

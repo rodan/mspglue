@@ -268,6 +268,8 @@ uint8_t str_to_uint32(char *str, uint32_t * out, const uint8_t seek,
     for (i = 0; i < len; i++) {
         if ((str[seek + i] > 47) && (str[seek + i] < 58)) {
             val += (str[seek + i] - 48) * pow;
+        } else {
+            val /= 10;
         }
         pow /= 10;
     }
@@ -296,6 +298,8 @@ uint8_t str_to_int32(char *str, int32_t * out, const uint8_t seek,
             val += (str[seek + i] - 48) * pow;
         } else if (str[seek + i] == 45) {
             sign = -1;
+        } else {
+            val /= 10;
         }
         pow /= 10;
     }
