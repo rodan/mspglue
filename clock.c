@@ -24,13 +24,13 @@ void clock_init(void)
 
 #ifdef USE_XT1
     #ifdef USE_XT2
-        CS_setExternalClockSource(ACLK_FREQ, CPU_FREQ);
+        CS_setExternalClockSource(ACLK_FREQ, SMCLK_FREQ);
     #else
         CS_setExternalClockSource(ACLK_FREQ, 0);
     #endif
 #else
     #ifdef USE_XT2
-        CS_setExternalClockSource(0, CPU_FREQ);
+        CS_setExternalClockSource(0, SMCLK_FREQ);
     #endif
 #endif
 
@@ -59,7 +59,7 @@ void clock_init(void)
 #endif
 
 #ifdef USE_XT2
-    CS_turnOnHFXT(CLK_DRIVE);
+    CS_turnOnHFXT(CLK_HFXT_DRIVE);
 #endif
 
 }
